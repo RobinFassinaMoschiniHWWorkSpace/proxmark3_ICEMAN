@@ -3,6 +3,7 @@ All notable changes to this project will be documented in this file.
 This project uses the changelog in accordance with [keepchangelog](http://keepachangelog.com/). Please use this to write notable changes, which is not the same as git commit log...
 
 ## [unreleased][unreleased]
+- Fixed `hf mf restore` - really skip strict ACLs unless --force (@doegox)
 - Added `hf 14b setuid` - set uid on magic 14b tag (@iceman1001)
 - Changed `hf 14b info` - now detect Tiananxin (@iceman1001)
 - Fixed `lf em 410x brute` - better filehandling and memory handling (@iceman1001)
@@ -33,6 +34,7 @@ This project uses the changelog in accordance with [keepchangelog](http://keepac
 - Fixed hardnested on AVX512F #2410 (@xianglin1998)
 - Added `hf 14a aidsim` - simulates a PICC (like `14a sim`), and allows you to respond to specific AIDs and getData responses (@evildaemond)
 - Fixed arguments for `SimulateIso14443aTag` and `SimulateIso14443aInit` in `hf_young.c`, `hf_aveful.c`, `hf_msdsal.c`, `hf_cardhopper.c`, `hf_reblay.c`, `hf_tcprst.c` and `hf_craftbyte.c` (@archi)
+- Added `mf_backdoor_dump.py` script that dumps FM11RF08S and similar (Mifare Classic 1k) tag data that can be directly read by known backdoor keys. (@Aptimex)
 
 ## [Backdoor.4.18994][2024-09-10]
 - Changed flashing messages to be less scary (@iceman1001)
