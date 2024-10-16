@@ -558,6 +558,7 @@ static int CmdHF14AReader(const char *Cmd) {
         arg_lit0(NULL, "ecp", "Use enhanced contactless polling"),
         arg_lit0(NULL, "mag", "Use Apple magsafe polling"),
         arg_lit0("@", NULL, "continuous reader mode"),
+        arg_lit0("w", "wait", "wait for card"),
         arg_param_end
     };
     CLIExecWithReturn(ctx, Cmd, argtable, true);
@@ -589,8 +590,10 @@ static int CmdHF14AReader(const char *Cmd) {
     }
 
     bool continuous = arg_get_lit(ctx, 7);
+    bool wait = arg_get_lit(ctx, 8);
     CLIParserFree(ctx);
 
+    bool found = false;
     if (disconnectAfter == false) {
         cm |= ISO14A_NO_DISCONNECT;
     }
@@ -627,6 +630,8 @@ static int CmdHF14AReader(const char *Cmd) {
                 3: proprietary Anticollision
             */
             uint64_t select_status = resp.oldarg[0];
+
+            found = (select_status != 0);
 
             if (select_status == 0) {
                 DropField();
@@ -682,7 +687,7 @@ plot:
             break;
         }
 
-    } while (continuous);
+    } while (continuous || (wait && (!found)));
 
     if (disconnectAfter == false) {
         if (silent == false) {
@@ -906,11 +911,6 @@ int CmdHF14ASim(const char *Cmd) {
         if ((flags & FLAG_NR_AR_ATTACK) == FLAG_NR_AR_ATTACK) {
             // inform device to break the sim loop since client has exited
             SendCommandNG(CMD_BREAK_LOOP, NULL, 0);
-        }
-
-        if (resp.status == PM3_EOPABORTED && ((flags & FLAG_NR_AR_ATTACK) == FLAG_NR_AR_ATTACK)) {
-            //iceman:  readerAttack call frees k_sector , this call is useless.
-            showSectorTable(k_sector, k_sectors_cnt);
         }
     }
 
@@ -3745,7 +3745,7 @@ int CmdHF14AAIDSim(const char *Cmd) {
     }
 
     if (rats_len > 0) {
-        flags |= RATS_IN_DATA;
+        flags |= FLAG_RATS_IN_DATA;
     }
 
 
@@ -3794,9 +3794,6 @@ int CmdHF14AAIDSim(const char *Cmd) {
     SendCommandNG(CMD_HF_ISO14443A_SIM_AID, (uint8_t *)&payload, sizeof(payload));
     PacketResponseNG resp = {0};
 
-    sector_t *k_sector = NULL;
-    size_t k_sectors_cnt = MIFARE_4K_MAXSECTOR;
-
     PrintAndLogEx(INFO, "Press " _GREEN_("pm3 button") " to abort simulation");
     bool keypress = kbd_enter_pressed();
     while (keypress == false) {
@@ -3817,11 +3814,6 @@ int CmdHF14AAIDSim(const char *Cmd) {
         if ((flags & FLAG_NR_AR_ATTACK) == FLAG_NR_AR_ATTACK) {
             // inform device to break the sim loop since client has exited
             SendCommandNG(CMD_BREAK_LOOP, NULL, 0);
-        }
-
-        if (resp.status == PM3_EOPABORTED && ((flags & FLAG_NR_AR_ATTACK) == FLAG_NR_AR_ATTACK)) {
-            //iceman:  readerAttack call frees k_sector , this call is useless.
-            showSectorTable(k_sector, k_sectors_cnt);
         }
     }
 

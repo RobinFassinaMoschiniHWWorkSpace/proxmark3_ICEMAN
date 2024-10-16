@@ -460,7 +460,7 @@ static int mf_save_keys_from_arr(uint16_t n, uint8_t *d) {
 
     char fn[FILE_PATH_SIZE] = {0};
     snprintf(fn, sizeof(fn), "hf-mf-%s-key", sprint_hex_inrow(d, 4));
-    saveFile(fn, ".bin", keys, keysize);
+    saveFileEx(fn, ".bin", keys, keysize, spDump);
     free(keys);
     return PM3_SUCCESS;
 }
@@ -4059,9 +4059,15 @@ void readerAttack(sector_t *k_sector, size_t k_sectors_cnt, nonces_t data, bool 
 
         //set emulator memory for keys
         if (setEmulatorMem) {
-            uint8_t memBlock[16] = {0, 0, 0, 0, 0, 0, 0xFF, 0x07, 0x80, 0x69, 0, 0, 0, 0, 0, 0};
-            num_to_bytes(k_sector[sector].Key[0], 6, memBlock);
-            num_to_bytes(k_sector[sector].Key[1], 6, memBlock + 10);
+            uint8_t memBlock[16];
+            mfEmlGetMem(memBlock, (sector * 4) + 3, 1);
+            if ((memBlock[6]==0) && (memBlock[7]==0) && (memBlock[8]==0)) {
+                // ACL not yet set?
+                memBlock[6] = 0xFF;
+                memBlock[7] = 0x07;
+                memBlock[8] = 0x80;
+            }
+            num_to_bytes(k_sector[sector].Key[keytype], 6, memBlock + ((keytype == MF_KEY_B) ? 10 : 0));
             //iceman,  guessing this will not work so well for 4K tags.
             PrintAndLogEx(INFO, "Setting Emulator Memory Block %02d: [%s]"
                           , (sector * 4) + 3
@@ -4245,36 +4251,49 @@ static int CmdHF14AMfSim(const char *Cmd) {
     payload.sak = sak[0];
 
     clearCommandBuffer();
-    SendCommandNG(CMD_HF_MIFARE_SIMULATE, (uint8_t *)&payload, sizeof(payload));
-    PacketResponseNG resp;
 
     if (flags & FLAG_INTERACTIVE) {
-        PrintAndLogEx(INFO, "Press " _GREEN_("pm3 button") " or send another cmd to abort simulation");
-
-        sector_t *k_sector = NULL;
-
-        while (kbd_enter_pressed() == 0) {
-
-            if (WaitForResponseTimeout(CMD_ACK, &resp, 1500) == false)
-                continue;
-
-            if ((flags & FLAG_NR_AR_ATTACK) != FLAG_NR_AR_ATTACK)
-                break;
-
-            if ((resp.oldarg[0] & 0xffff) != CMD_HF_MIFARE_SIMULATE)
-                break;
-
-            nonces_t data[1];
-            memcpy(data, resp.data.asBytes, sizeof(data));
-            readerAttack(k_sector, k_sectors_cnt, data[0], setEmulatorMem, verbose);
-            break;
-        }
-        //iceman:  readerAttack call frees k_sector.  this call below is useless.
-        showSectorTable(k_sector, k_sectors_cnt);
-
+        PrintAndLogEx(INFO, "Press " _GREEN_("pm3 button") " or a key to abort simulation");
     } else {
-        PrintAndLogEx(INFO, "Press " _GREEN_("pm3 button") " to abort simulation");
+        PrintAndLogEx(INFO, "Press " _GREEN_("pm3 button") " or send another cmd to abort simulation");
     }
+    bool cont;
+    do {
+        cont = false;
+        SendCommandNG(CMD_HF_MIFARE_SIMULATE, (uint8_t *)&payload, sizeof(payload));
+        if (flags & FLAG_INTERACTIVE) {
+            PacketResponseNG resp;
+            sector_t *k_sector = NULL;
+
+            bool keypress = kbd_enter_pressed();
+            while (keypress == false) {
+
+                if (WaitForResponseTimeout(CMD_HF_MIFARE_SIMULATE, &resp, 1500) == 0) {
+                    keypress = kbd_enter_pressed();
+                    continue;
+                }
+
+                if (resp.status != PM3_SUCCESS)
+                    break;
+
+                if ((flags & FLAG_NR_AR_ATTACK) != FLAG_NR_AR_ATTACK)
+                    break;
+
+                const nonces_t *data = (nonces_t *)resp.data.asBytes;
+                readerAttack(k_sector, k_sectors_cnt, data[0], setEmulatorMem, verbose);
+                cont = true;
+                break;
+            }
+            if (keypress) {
+                if ((flags & FLAG_NR_AR_ATTACK) == FLAG_NR_AR_ATTACK) {
+                    // inform device to break the sim loop since client has exited
+                    PrintAndLogEx(INFO, "Key pressed, please wait a few seconds for the pm3 to stop...");
+                    SendCommandNG(CMD_BREAK_LOOP, NULL, 0);
+                }
+            }
+        }
+
+    } while (cont);
     return PM3_SUCCESS;
 }
 
@@ -4926,6 +4945,8 @@ static int CmdHF14AMfECFill(const char *Cmd) {
         arg_param_begin,
         arg_lit0("a", NULL, "input key type is key A(def)"),
         arg_lit0("b", NULL, "input key type is key B"),
+        arg_int0("c", NULL, "<dec>", "input key type is key A + offset"),
+        arg_str0("k", "key", "<hex>", "key, 6 hex bytes, only for option -c"),
         arg_lit0(NULL, "mini", "MIFARE Classic Mini / S20"),
         arg_lit0(NULL, "1k", "MIFARE Classic 1k / S50 (def)"),
         arg_lit0(NULL, "2k", "MIFARE Classic/Plus 2k"),
@@ -4941,11 +4962,28 @@ static int CmdHF14AMfECFill(const char *Cmd) {
     } else if (arg_get_lit(ctx, 2)) {
         keytype = MF_KEY_B;
     }
+    uint8_t prev_keytype = keytype;
+    keytype = arg_get_int_def(ctx, 3, keytype);
+    if ((arg_get_lit(ctx, 1) || arg_get_lit(ctx, 2)) && (keytype != prev_keytype)) {
+        CLIParserFree(ctx);
+        PrintAndLogEx(WARNING, "Choose one single input key type");
+        return PM3_EINVARG;
+    }
+    int keylen = 0;
+    uint8_t key[6] = {0};
+    CLIGetHexWithReturn(ctx, 4, key, &keylen);
+    if ((keytype > MF_KEY_B) && (keylen != 6)) {
+        PrintAndLogEx(WARNING, "Missing key");
+        return PM3_EINVARG;
+    }
+    if ((keytype <= MF_KEY_B) && (keylen > 0)) {
+        PrintAndLogEx(WARNING, "Ignoring provided key");
+    }
 
-    bool m0 = arg_get_lit(ctx, 3);
-    bool m1 = arg_get_lit(ctx, 4);
-    bool m2 = arg_get_lit(ctx, 5);
-    bool m4 = arg_get_lit(ctx, 6);
+    bool m0 = arg_get_lit(ctx, 5);
+    bool m1 = arg_get_lit(ctx, 6);
+    bool m2 = arg_get_lit(ctx, 7);
+    bool m4 = arg_get_lit(ctx, 8);
     CLIParserFree(ctx);
 
     // validations
@@ -4975,12 +5013,23 @@ static int CmdHF14AMfECFill(const char *Cmd) {
         .sectorcnt = sectors_cnt,
         .keytype = keytype
     };
+    memcpy(payload.key, key, sizeof(payload.key));
 
     clearCommandBuffer();
     SendCommandNG(CMD_HF_MIFARE_EML_LOAD, (uint8_t *)&payload, sizeof(payload));
 
-    // 2021, iceman:  should get a response from device when its done.
-    return PM3_SUCCESS;
+    PacketResponseNG resp;
+    if (WaitForResponseTimeout(CMD_HF_MIFARE_EML_LOAD, &resp, 1500) == false) {
+        PrintAndLogEx(WARNING, "command execution time out");
+        return PM3_ETIMEOUT;
+    }
+
+    if (resp.status == PM3_SUCCESS)
+        PrintAndLogEx(SUCCESS, "Fill ( " _GREEN_("ok") " )");
+    else
+        PrintAndLogEx(FAILED, "Fill ( " _RED_("fail") " )");
+
+    return resp.status;
 }
 
 static int CmdHF14AMfEKeyPrn(const char *Cmd) {
@@ -9894,16 +9943,22 @@ static int CmdHF14AMfISEN(const char *Cmd) {
         uint8_t num_sectors = MIFARE_1K_MAXSECTOR + 1;
         iso14a_fm11rf08s_nonces_with_data_t nonces_dump = {0};
         for (uint8_t sec = 0; sec < num_sectors; sec++) {
-            memcpy(nonces_dump.nt[sec][0], resp.data.asBytes + ((sec * 2) * 9), 4);
-            memcpy(nonces_dump.nt[sec][1], resp.data.asBytes + (((sec * 2) + 1) * 9), 4);
+            // reconstruct full nt
+            uint32_t nt;
+            nt = bytes_to_num(resp.data.asBytes + ((sec * 2) * 8), 2);
+            nt = nt << 16 | prng_successor(nt, 16);
+            num_to_bytes(nt, 4, nonces_dump.nt[sec][0]);
+            nt = bytes_to_num(resp.data.asBytes + (((sec * 2) + 1) * 8), 2);
+            nt = nt << 16 | prng_successor(nt, 16);
+            num_to_bytes(nt, 4, nonces_dump.nt[sec][1]);
         }
         for (uint8_t sec = 0; sec < num_sectors; sec++) {
-            memcpy(nonces_dump.nt_enc[sec][0], resp.data.asBytes + ((sec * 2) * 9) + 4, 4);
-            memcpy(nonces_dump.nt_enc[sec][1], resp.data.asBytes + (((sec * 2) + 1) * 9) + 4, 4);
+            memcpy(nonces_dump.nt_enc[sec][0], resp.data.asBytes + ((sec * 2) * 8) + 4, 4);
+            memcpy(nonces_dump.nt_enc[sec][1], resp.data.asBytes + (((sec * 2) + 1) * 8) + 4, 4);
         }
         for (uint8_t sec = 0; sec < num_sectors; sec++) {
-            nonces_dump.par_err[sec][0] = resp.data.asBytes[((sec * 2) * 9) + 8];
-            nonces_dump.par_err[sec][1] = resp.data.asBytes[(((sec * 2) + 1) * 9) + 8];
+            nonces_dump.par_err[sec][0] = resp.data.asBytes[((sec * 2) * 8) + 2];
+            nonces_dump.par_err[sec][1] = resp.data.asBytes[(((sec * 2) + 1) * 8) + 2];
         }
         if (collect_fm11rf08s_with_data) {
             int bytes = MIFARE_1K_MAXBLOCK * MFBLOCK_SIZE;

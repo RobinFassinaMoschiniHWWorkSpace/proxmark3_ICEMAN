@@ -125,6 +125,7 @@ void truncate_filename(char *fn,  uint16_t maxlen);
  * @return 0 for ok, 1 for failz
  */
 int saveFile(const char *preferredName, const char *suffix, const void *data, size_t datalen);
+int saveFileEx(const char *preferredName, const char *suffix, const void *data, size_t datalen, savePaths_t e_save_path);
 
 /** STUB
  * @brief Utility function to save JSON data to a file. This method takes a preferred name, but if that
@@ -140,7 +141,9 @@ int saveFile(const char *preferredName, const char *suffix, const void *data, si
 int saveFileJSON(const char *preferredName, JSONFileType ftype, uint8_t *data, size_t datalen, void (*callback)(json_t *));
 int saveFileJSONex(const char *preferredName, JSONFileType ftype, uint8_t *data, size_t datalen, bool verbose, void (*callback)(json_t *), savePaths_t e_save_path);
 int saveFileJSONroot(const char *preferredName, void *root, size_t flags, bool verbose);
-int saveFileJSONrootEx(const char *preferredName, const void *root, size_t flags, bool verbose, bool overwrite);
+int saveFileJSONrootEx(const char *preferredName, const void *root, size_t flags, bool verbose, bool overwrite, savePaths_t e_save_path);
+int prepareJSON(json_t *root, JSONFileType ftype, uint8_t *data, size_t datalen, bool verbose, void (*callback)(json_t *));
+char *sprintJSON(JSONFileType ftype, uint8_t *data, size_t datalen, bool verbose, void (*callback)(json_t *));
 /** STUB
  * @brief Utility function to save WAVE data to a file. This method takes a preferred name, but if that
  * file already exists, it tries with another name until it finds something suitable.

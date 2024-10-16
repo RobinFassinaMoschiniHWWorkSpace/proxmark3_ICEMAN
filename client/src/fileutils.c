@@ -261,12 +261,14 @@ void truncate_filename(char *fn, uint16_t maxlen) {
 
 // --------- SAVE FILES
 int saveFile(const char *preferredName, const char *suffix, const void *data, size_t datalen) {
-
+    return saveFileEx(preferredName, suffix, data, datalen, spDefault);
+}
+int saveFileEx(const char *preferredName, const char *suffix, const void *data, size_t datalen, savePaths_t e_save_path) {
     if (data == NULL || datalen == 0) {
         return PM3_EINVARG;
     }
 
-    char *fileName = newfilenamemcopy(preferredName, suffix);
+    char *fileName = newfilenamemcopyEx(preferredName, suffix, e_save_path);
     if (fileName == NULL) {
         return PM3_EMALLOC;
     }
@@ -288,22 +290,15 @@ int saveFile(const char *preferredName, const char *suffix, const void *data, si
     return PM3_SUCCESS;
 }
 
-// dump file (normally,  we also got preference file, etc)
-int saveFileJSON(const char *preferredName, JSONFileType ftype, uint8_t *data, size_t datalen, void (*callback)(json_t *)) {
-    return saveFileJSONex(preferredName, ftype, data, datalen, true, callback, spDump);
-}
-int saveFileJSONex(const char *preferredName, JSONFileType ftype, uint8_t *data, size_t datalen, bool verbose, void (*callback)(json_t *), savePaths_t e_save_path) {
-
+int prepareJSON(json_t *root, JSONFileType ftype, uint8_t *data, size_t datalen, bool verbose, void (*callback)(json_t *)) {
     if (ftype != jsfCustom) {
         if (data == NULL || datalen == 0) {
             return PM3_EINVARG;
         }
     }
 
-    int retval = PM3_SUCCESS;
     char path[PATH_MAX_LENGTH] = {0};
 
-    json_t *root = json_object();
     JsonSaveStr(root, "Created", "proxmark3");
     switch (ftype) {
         case jsfRaw: {
@@ -771,31 +766,33 @@ int saveFileJSONex(const char *preferredName, JSONFileType ftype, uint8_t *data,
         default:
             break;
     }
+    return PM3_SUCCESS;
+}
 
-    char *fn = newfilenamemcopyEx(preferredName, ".json", e_save_path);
-    if (fn == NULL) {
-        return PM3_EMALLOC;
-    }
+// dump file (normally,  we also got preference file, etc)
+int saveFileJSON(const char *preferredName, JSONFileType ftype, uint8_t *data, size_t datalen, void (*callback)(json_t *)) {
+    return saveFileJSONex(preferredName, ftype, data, datalen, true, callback, spDump);
+}
 
-    if (json_dump_file(root, fn, JSON_INDENT(2))) {
-        PrintAndLogEx(FAILED, "error, can't save the file `" _YELLOW_("%s") "`", fn);
-        retval = 200;
-        free(fn);
-        goto out;
-    }
-    if (verbose) {
-        PrintAndLogEx(SUCCESS, "Saved to json file `" _YELLOW_("%s") "`", fn);
-    }
-    free(fn);
+int saveFileJSONex(const char *preferredName, JSONFileType ftype, uint8_t *data, size_t datalen, bool verbose, void (*callback)(json_t *), savePaths_t e_save_path) {
 
-out:
+    int retval = PM3_SUCCESS;
+
+    json_t *root = json_object();
+    retval = prepareJSON(root, ftype, data, datalen, verbose, callback);
+    if (retval != PM3_SUCCESS) {
+        return retval;
+    }
+    retval = saveFileJSONrootEx(preferredName, root, JSON_INDENT(2), verbose, false, e_save_path);
     json_decref(root);
     return retval;
 }
+
 int saveFileJSONroot(const char *preferredName, void *root, size_t flags, bool verbose) {
-    return saveFileJSONrootEx(preferredName, root, flags, verbose, false);
+    return saveFileJSONrootEx(preferredName, root, flags, verbose, false, spDump);
 }
-int saveFileJSONrootEx(const char *preferredName, const void *root, size_t flags, bool verbose, bool overwrite) {
+
+int saveFileJSONrootEx(const char *preferredName, const void *root, size_t flags, bool verbose, bool overwrite, savePaths_t e_save_path) {
     if (root == NULL)
         return PM3_EINVARG;
 
@@ -803,7 +800,7 @@ int saveFileJSONrootEx(const char *preferredName, const void *root, size_t flags
     if (overwrite)
         filename = filenamemcopy(preferredName, ".json");
     else
-        filename = newfilenamemcopyEx(preferredName, ".json", spDump);
+        filename = newfilenamemcopyEx(preferredName, ".json", e_save_path);
 
     if (filename == NULL)
         return PM3_EMALLOC;
@@ -812,7 +809,7 @@ int saveFileJSONrootEx(const char *preferredName, const void *root, size_t flags
 
     if (res == 0) {
         if (verbose) {
-            PrintAndLogEx(SUCCESS, "Saved to json file " _YELLOW_("%s"), filename);
+            PrintAndLogEx(SUCCESS, "Saved to json file `" _YELLOW_("%s") "`", filename);
         }
         free(filename);
         return PM3_SUCCESS;
@@ -821,6 +818,17 @@ int saveFileJSONrootEx(const char *preferredName, const void *root, size_t flags
     }
     free(filename);
     return PM3_EFILE;
+}
+
+char *sprintJSON(JSONFileType ftype, uint8_t *data, size_t datalen, bool verbose, void (*callback)(json_t *)) {
+
+    json_t *root = json_object();
+    if (prepareJSON(root, ftype, data, datalen, verbose, callback) != PM3_SUCCESS) {
+        return NULL;
+    }
+    char *s = json_dumps(root, JSON_INDENT(2));
+    json_decref(root);
+    return s;
 }
 
 // wave file of trace,
@@ -3129,7 +3137,7 @@ int pm3_save_mf_dump(const char *fn, uint8_t *d, size_t n, JSONFileType jsft) {
         PrintAndLogEx(INFO, "No data to save, skipping...");
         return PM3_EINVARG;
     }
-    saveFile(fn, ".bin", d, n);
+    saveFileEx(fn, ".bin", d, n, spDump);
 
     iso14a_mf_extdump_t jd = {0};
     jd.card_info.ats_len = 0;

@@ -41,6 +41,28 @@ spi = {
                 "sizeB": "512KB",
                 },
             },
+        0x40: {
+            0x13: {
+                "part": "W25Q40BV",
+                "size": "4mbits",
+                "sizeB": "512KB",
+                },
+            0x14: {
+                "part": "W25Q80BV",
+                "size": "8mbits",
+                "sizeB": "1MB",
+                },
+            0x15: {
+                "part": "W25Q16BV",
+                "size": "16mbits",
+                "sizeB": "2MB",
+                },
+            0x16: {
+                "part": "W25Q32BV",
+                "size": "32mbits",
+                "sizeB": "4MB",
+                },
+            },
         0x70: {
             0x22: {
                 "part": "W25Q02JV-IM",
@@ -55,7 +77,7 @@ p = pm3.pm3()
 
 p.console("hw status")
 
-rex = re.compile("...\s([0-9a-fA-F]{2})\s/\s([0-9a-fA-F]{4})")
+rex = re.compile("...\\s([0-9a-fA-F]{2})\\s/\\s([0-9a-fA-F]{4})")
 for line in p.grabbed_output.split('\n'):
     # [#]   JEDEC Mfr ID / Dev ID... 85 / 6015
     if " JEDEC " not in line:

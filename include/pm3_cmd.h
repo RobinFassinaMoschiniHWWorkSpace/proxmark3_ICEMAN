@@ -323,6 +323,7 @@ typedef struct {
 typedef struct {
     uint8_t sectorcnt;
     uint8_t keytype;
+    uint8_t key[6];
 } PACKED mfc_eload_t;
 
 typedef struct {
@@ -778,7 +779,7 @@ typedef struct {
 #define FLAG_FORCED_ATQA        0x800
 #define FLAG_FORCED_SAK         0x1000
 #define FLAG_CVE21_0430         0x2000
-#define RATS_IN_DATA            0x3000
+#define FLAG_RATS_IN_DATA       0x4000
 
 
 #define MODE_SIM_CSN        0

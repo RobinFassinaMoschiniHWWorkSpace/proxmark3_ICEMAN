@@ -1256,7 +1256,7 @@ bool SimulateIso14443aInit(uint8_t tagType, uint16_t flags, uint8_t *data, uint8
     }
 
     // copy the iRATs if supplied
-    if ((flags & RATS_IN_DATA) == RATS_IN_DATA) {
+    if ((flags & FLAG_RATS_IN_DATA) == FLAG_RATS_IN_DATA) {
         memcpy(rRATS, iRATs, sizeof(iRATs));
         // rats len is dictated by the first char of the string, add 2 crc bytes
         rRATS_len = (iRATs[0] + 2);
@@ -1432,7 +1432,7 @@ bool SimulateIso14443aInit(uint8_t tagType, uint16_t flags, uint8_t *data, uint8
 //-----------------------------------------------------------------------------
 void SimulateIso14443aTag(uint8_t tagType, uint16_t flags, uint8_t *data, uint8_t exitAfterNReads, uint8_t *iRATs) {
 
-#define ATTACK_KEY_COUNT 8 // keep same as define in cmdhfmf.c -> readerAttack()
+#define ATTACK_KEY_COUNT 16
 
     tag_response_info_t *responses;
     uint32_t cuid = 0;

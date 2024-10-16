@@ -1774,7 +1774,7 @@ static void PacketReceived(PacketCommandNG *packet) {
             break;
         }
         case CMD_HF_MIFARE_ACQ_STATIC_ENCRYPTED_NONCES: {
-            MifareAcquireStaticEncryptedNonces(packet->oldarg[0], packet->data.asBytes);
+            MifareAcquireStaticEncryptedNonces(packet->oldarg[0], packet->data.asBytes, true);
             break;
         }
         case CMD_HF_MIFARE_ACQ_NONCES: {
@@ -1869,7 +1869,7 @@ static void PacketReceived(PacketCommandNG *packet) {
         }
         case CMD_HF_MIFARE_EML_LOAD: {
             mfc_eload_t *payload = (mfc_eload_t *) packet->data.asBytes;
-            MifareECardLoadExt(payload->sectorcnt, payload->keytype);
+            MifareECardLoadExt(payload->sectorcnt, payload->keytype, payload->key);
             break;
         }
         // Gen1a / 1b - "magic Chinese" card
